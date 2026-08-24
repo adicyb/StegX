@@ -1,14 +1,14 @@
 import os
-import struct
 
 import cv2
 import numpy as np
 
+from stegx.core.crypto import decrypt_data
 from stegx.core.payload import (
     MAGIC,
     get_payload_info,
 )
-from stegx.core.crypto import decrypt_data
+from stegx.core.positions import generate_positions
 
 
 def bits_to_bytes(bits: list[int]) -> bytes:
@@ -28,35 +28,33 @@ def bits_to_bytes(bits: list[int]) -> bytes:
         value = 0
 
         for bit in byte_bits:
-            value = (value << 1) | bit
+
+            value = (
+                value << 1
+            ) | bit
 
         output.append(value)
 
     return bytes(output)
 
 
-def extract_video_payload(
+def get_video_channel_values(
     video_path: str,
-    output_directory: str,
-    password: str | None = None,
-):
+) -> np.ndarray:
     """
-    Extract a StegX payload from a video.
+    Read every video frame and return all BGR
+    channel values as one continuous array.
     """
 
     video = cv2.VideoCapture(video_path)
 
     if not video.isOpened():
+
         raise ValueError(
             "Could not open the video."
         )
 
-    recovered_bits = []
-
-    filename_length = None
-    header_size = None
-    payload_size = None
-    total_payload_bits = None
+    values = []
 
     while True:
 
@@ -65,207 +63,306 @@ def extract_video_payload(
         if not success:
             break
 
-        flat_frame = frame.reshape(-1)
-
-        frame_bits = (
-            flat_frame & 1
-        ).astype(np.uint8)
-
-        recovered_bits.extend(
-            frame_bits.tolist()
+        values.append(
+            frame.reshape(-1)
         )
 
-        recovered_bytes = bits_to_bytes(
-            recovered_bits
+    video.release()
+
+    if not values:
+
+        raise ValueError(
+            "No frames could be read from the video."
         )
 
-        # ------------------------------------------------
-        # STEP 1: Verify STEGX magic.
-        # ------------------------------------------------
+    return np.concatenate(values)
 
-        if len(recovered_bytes) >= 5:
 
-            magic = recovered_bytes[:5]
+def extract_video_payload(
+    video_path: str,
+    output_directory: str,
+    password: str | None = None,
+    position_key: str | None = None,
+):
+    """
+    Extract a StegX payload from a video.
 
-            if magic != MAGIC:
+    Supports both sequential embedding and
+    deterministic randomized embedding positions.
+    """
 
-                video.release()
+    channel_values = get_video_channel_values(
+        video_path
+    )
 
-                raise ValueError(
-                    "No valid STEGX payload found "
-                    "in this video."
-                )
+    total_positions = len(
+        channel_values
+    )
 
-        else:
-            continue
+    # ------------------------------------------------
+    # STEP 1: Recover enough data to read the header.
+    # ------------------------------------------------
 
-        # ------------------------------------------------
-        # STEP 2: Read filename length.
+    if position_key:
+
+        # We first need enough randomized positions
+        # to recover the minimum possible header.
         #
-        # Structure:
+        # Minimum structure:
         #
         # MAGIC          5 bytes
         # VERSION        1 byte
         # FLAGS          1 byte
         # FILENAME LEN   2 bytes
-        # ------------------------------------------------
+        # PAYLOAD LEN    8 bytes
+        #
+        # Total = 17 bytes minimum.
+        initial_bits = 17 * 8
 
-        if (
-            filename_length is None
-            and len(recovered_bytes) >= 9
-        ):
-
-            filename_length = struct.unpack(
-                "H",
-                recovered_bytes[7:9]
-            )[0]
-
-            # Full header size:
-            #
-            # 5 magic
-            # 1 version
-            # 1 flags
-            # 2 filename length
-            # filename bytes
-            # 8 payload length
-
-            header_size = (
-                5
-                + 1
-                + 1
-                + 2
-                + filename_length
-                + 8
-            )
-
-        # ------------------------------------------------
-        # STEP 3: Once the complete header exists,
-        # read the payload size.
-        # ------------------------------------------------
-
-        if (
-            header_size is not None
-            and payload_size is None
-            and len(recovered_bytes) >= header_size
-        ):
-
-            payload_size_offset = (
-                header_size - 8
-            )
-
-            payload_size = struct.unpack(
-                "Q",
-                recovered_bytes[
-                    payload_size_offset:
-                    header_size
-                ]
-            )[0]
-
-            # Read the flags byte.
-            # Layout:
-            # MAGIC   = bytes 0-4
-            # VERSION = byte 5
-            # FLAGS   = byte 6
-            flags = recovered_bytes[6]
-
-            encrypted = bool(flags & 0x01)
-
-            total_payload_bytes = (
-                header_size
-                + payload_size
-            )
-
-            # Encrypted payloads contain an additional
-            # 16-byte salt between the header and
-            # encrypted data.
-            if encrypted:
-
-                total_payload_bytes += 16
-
-            total_payload_bits = (
-                total_payload_bytes * 8
-            )
-
-        # ------------------------------------------------
-        # STEP 4: Stop as soon as we have the
-        # complete payload.
-        # ------------------------------------------------
-
-        if (
-            total_payload_bits is not None
-            and len(recovered_bits)
-            >= total_payload_bits
-        ):
-            break
-
-    video.release()
-
-    if total_payload_bits is None:
-
-        raise ValueError(
-            "Could not recover a valid "
-            "STEGX payload header."
+        positions = generate_positions(
+            total_positions,
+            initial_bits,
+            position_key,
         )
 
-    if len(recovered_bits) < total_payload_bits:
+        initial_bits_data = (
+            channel_values[positions] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
+    else:
+
+        initial_bits_data = (
+            channel_values[:17 * 8] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
+    initial_data = bits_to_bytes(
+        initial_bits_data
+    )
+
+    # ------------------------------------------------
+    # STEP 2: Validate MAGIC.
+    # ------------------------------------------------
+
+    if initial_data[:len(MAGIC)] != MAGIC:
+
+        if position_key:
+
+            raise ValueError(
+                "No valid StegX payload signature found. "
+                "The position key may be incorrect."
+            )
 
         raise ValueError(
-            "Video ended before the complete "
-            "payload could be recovered."
+            "No valid StegX payload found "
+            "in this video."
         )
 
-    # Recover only the exact payload.
+    # ------------------------------------------------
+    # STEP 3: Read filename length.
+    # ------------------------------------------------
+
+    filename_length = int.from_bytes(
+        initial_data[7:9],
+        byteorder="little",
+    )
+
+    # Base header:
+    #
+    # MAGIC          5
+    # VERSION        1
+    # FLAGS          1
+    # FILENAME LEN   2
+    # FILENAME       variable
+    # PAYLOAD LEN    8
+
+    base_header_size = (
+        5
+        + 1
+        + 1
+        + 2
+        + filename_length
+        + 8
+    )
+
+    header_bits_required = (
+        base_header_size * 8
+    )
+
+    # ------------------------------------------------
+    # STEP 4: Recover complete base header.
+    # ------------------------------------------------
+
+    if position_key:
+
+        positions = generate_positions(
+            total_positions,
+            header_bits_required,
+            position_key,
+        )
+
+        header_bits = (
+            channel_values[positions] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
+    else:
+
+        header_bits = (
+            channel_values[
+                :header_bits_required
+            ] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
+    base_header = bits_to_bytes(
+        header_bits
+    )
+
+    # ------------------------------------------------
+    # STEP 5: Read encryption flag and payload size.
+    # ------------------------------------------------
+
+    flags = base_header[6]
+
+    encrypted = bool(
+        flags & 0x01
+    )
+
+    payload_size = int.from_bytes(
+        base_header[-8:],
+        byteorder="little",
+    )
+
+    # Salt is part of the stored header when encrypted.
+    salt_size = 16 if encrypted else 0
+
+    total_payload_bytes = (
+        base_header_size
+        + salt_size
+        + payload_size
+    )
+
+    total_payload_bits = (
+        total_payload_bytes * 8
+    )
+
+    if total_payload_bits > total_positions:
+
+        raise ValueError(
+            "Payload size exceeds available "
+            "video data."
+        )
+
+    # ------------------------------------------------
+    # STEP 6: Recover complete payload.
+    # ------------------------------------------------
+
+    if position_key:
+
+        positions = generate_positions(
+            total_positions,
+            total_payload_bits,
+            position_key,
+        )
+
+        recovered_bits = (
+            channel_values[positions] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
+    else:
+
+        recovered_bits = (
+            channel_values[
+                :total_payload_bits
+            ] & 1
+        ).astype(
+            np.uint8
+        ).tolist()
+
     payload = bits_to_bytes(
-        recovered_bits[:total_payload_bits]
+        recovered_bits
     )
 
-    # Parse the complete payload.
-    payload_info = get_payload_info(
-        payload
+    # ------------------------------------------------
+    # STEP 7: Parse using the central payload parser.
+    # ------------------------------------------------
+
+    try:
+
+        payload_info = get_payload_info(
+            payload
+        )
+
+    except Exception:
+
+        if position_key:
+
+            raise ValueError(
+                "Could not parse the StegX payload. "
+                "The position key may be incorrect."
+            )
+
+        raise ValueError(
+            "Could not parse the StegX payload."
+        )
+
+    header_size = (
+        payload_info["header_size"]
     )
 
-    header_size = payload_info[
-        "header_size"
-    ]
+    payload_size = (
+        payload_info["payload_size"]
+    )
 
     payload_data = payload[
         header_size:
-        header_size + payload_info[
-            "payload_size"
-        ]
+        header_size + payload_size
     ]
 
-    filename = payload_info[
-        "filename"
-    ]
+    if len(payload_data) != payload_size:
 
-    encrypted = payload_info[
-        "encrypted"
-    ]
+        raise ValueError(
+            "Payload appears to be incomplete "
+            "or corrupted."
+        )
+
+    filename = (
+        payload_info["filename"]
+    )
+
+    encrypted = (
+        payload_info["encrypted"]
+    )
 
     # ------------------------------------------------
-    # STEP 5: Decrypt if necessary.
+    # STEP 8: Decrypt encrypted payload.
     # ------------------------------------------------
 
     if encrypted:
 
-        if password is None or password == "":
+        if not password:
 
             raise ValueError(
                 "This payload is encrypted. "
                 "A password is required."
             )
 
-        salt = payload_info["salt"]
-
         payload_data = decrypt_data(
             payload_data,
             password,
-            salt,
+            payload_info["salt"],
         )
 
     # ------------------------------------------------
-    # STEP 6: Save recovered file.
+    # STEP 9: Save recovered file.
     # ------------------------------------------------
 
     os.makedirs(
@@ -280,7 +377,7 @@ def extract_video_payload(
 
     with open(
         output_path,
-        "wb"
+        "wb",
     ) as file:
 
         file.write(
@@ -288,10 +385,9 @@ def extract_video_payload(
         )
 
     return {
-        "filename": filename,
-        "payload_size": len(
-            payload_data
-        ),
-        "encrypted": encrypted,
-        "output_path": output_path,
-    }
+    "filename": filename,
+    "payload_size": len(payload_data),
+    "encrypted": encrypted,
+    "randomized": bool(position_key),
+    "output_path": output_path,
+}

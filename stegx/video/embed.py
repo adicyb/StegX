@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from stegx.core.payload import create_payload
+from stegx.core.positions import generate_positions
 
 
 def bytes_to_bits(data: bytes) -> str:
@@ -20,16 +21,19 @@ def embed_video_payload(
     payload_path: str,
     output_path: str,
     password: str | None = None,
+    position_key: str | None = None,
 ):
     """
     Embed a StegX payload into a video using
     1-bit LSB steganography across BGR channels.
 
+    If a position key is provided, payload bits are
+    embedded into deterministic randomized positions.
+
     The output video uses the FFV1 lossless codec
     to preserve the embedded LSB data.
     """
 
-    # Open the input video.
     video = cv2.VideoCapture(video_path)
 
     if not video.isOpened():
@@ -37,7 +41,6 @@ def embed_video_payload(
             "Could not open the input video."
         )
 
-    # Read video metadata.
     width = int(
         video.get(cv2.CAP_PROP_FRAME_WIDTH)
     )
@@ -64,7 +67,7 @@ def embed_video_payload(
 
     required_bits = len(payload_bits)
 
-    # 3 channels: Blue, Green, Red.
+    # Total BGR channel values across the video.
     available_bits = (
         width
         * height
@@ -82,7 +85,17 @@ def embed_video_payload(
             f"Available: {available_bits:,} bits."
         )
 
-    # FFV1 is our tested lossless codec.
+    # Generate randomized global positions.
+    positions = None
+
+    if position_key:
+
+        positions = generate_positions(
+            available_bits,
+            required_bits,
+            position_key,
+        )
+
     fourcc = cv2.VideoWriter_fourcc(
         *"FFV1"
     )
@@ -106,6 +119,55 @@ def embed_video_payload(
     bit_index = 0
     frames_processed = 0
 
+    frame_values = (
+        width
+        * height
+        * 3
+    )
+
+    # ------------------------------------------------
+    # Prepare randomized positions by frame.
+    #
+    # Each entry stores:
+    #
+    # frame_index:
+    # [
+    #     (local_channel_position, payload_bit_index),
+    #     ...
+    # ]
+    # ------------------------------------------------
+
+    positions_by_frame = {}
+
+    if positions is not None:
+
+        for payload_bit_index, global_position in enumerate(
+            positions
+        ):
+
+            frame_index = (
+                global_position // frame_values
+            )
+
+            local_position = (
+                global_position % frame_values
+            )
+
+            if frame_index not in positions_by_frame:
+
+                positions_by_frame[
+                    frame_index
+                ] = []
+
+            positions_by_frame[
+                frame_index
+            ].append(
+                (
+                    local_position,
+                    payload_bit_index,
+                )
+            )
+
     while True:
 
         success, frame = video.read()
@@ -113,14 +175,16 @@ def embed_video_payload(
         if not success:
             break
 
-        # Only modify frames while there are
-        # payload bits remaining.
-        if bit_index < required_bits:
+        flat_frame = frame.reshape(-1)
 
-            # Flatten frame:
-            # (height, width, 3)
-            # becomes one continuous array.
-            flat_frame = frame.reshape(-1)
+        # ------------------------------------------------
+        # SEQUENTIAL EMBEDDING
+        # ------------------------------------------------
+
+        if (
+            position_key is None
+            and bit_index < required_bits
+        ):
 
             remaining_bits = (
                 required_bits - bit_index
@@ -131,8 +195,6 @@ def embed_video_payload(
                 len(flat_frame),
             )
 
-            # Convert the next payload bits
-            # into a NumPy array.
             bits = np.fromiter(
                 (
                     int(bit)
@@ -145,15 +207,40 @@ def embed_video_payload(
                 count=usable_values,
             )
 
-            # Clear the LSB of each channel value.
-            flat_frame[:usable_values] &= 0b11111110
+            flat_frame[:usable_values] &= (
+                0b11111110
+            )
 
-            # Insert the payload bits.
             flat_frame[:usable_values] |= bits
 
             bit_index += usable_values
 
-        # Write the frame to the FFV1 output.
+        # ------------------------------------------------
+        # RANDOMIZED EMBEDDING
+        # ------------------------------------------------
+
+        elif position_key is not None:
+
+            if frames_processed in positions_by_frame:
+
+                for (
+                    local_position,
+                    payload_bit_index,
+                ) in positions_by_frame[
+                    frames_processed
+                ]:
+
+                    bit = int(
+                        payload_bits[
+                            payload_bit_index
+                        ]
+                    )
+
+                    flat_frame[local_position] = (
+                        flat_frame[local_position]
+                        & 0b11111110
+                    ) | bit
+
         writer.write(frame)
 
         frames_processed += 1
@@ -161,12 +248,16 @@ def embed_video_payload(
     video.release()
     writer.release()
 
-    if bit_index != required_bits:
+    # For randomized embedding, all payload bits
+    # should have been assigned to valid frames.
+    if position_key is None:
 
-        raise ValueError(
-            "Video ended before the entire "
-            "payload could be embedded."
-        )
+        if bit_index != required_bits:
+
+            raise ValueError(
+                "Video ended before the entire "
+                "payload could be embedded."
+            )
 
     return {
         "payload_bits": required_bits,
@@ -176,5 +267,9 @@ def embed_video_payload(
         "encrypted": (
             password is not None
             and password != ""
+        ),
+        "randomized_positions": (
+            position_key is not None
+            and position_key != ""
         ),
     }
