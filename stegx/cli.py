@@ -1,7 +1,11 @@
 import typer
+import os
 
 from stegx.utils.banner import show_banner
-from stegx.core.format_handler import print_media_info
+from stegx.core.format_handler import (
+    print_media_info,
+    get_media_info,
+)
 from stegx.image.capacity import get_image_capacity, format_size
 from stegx.core.payload import create_payload, get_payload_info
 from stegx.image.embed import embed_payload
@@ -9,7 +13,9 @@ from stegx.image.extract import (
     extract_payload,
     get_displayable_content,
 )
-from stegx.analysis.signature import analyze_signature as run_signature_analysis
+from stegx.analysis.signature import (
+    analyze_signature as run_signature_analysis,
+)
 from stegx.analysis.heuristic import analyze_heuristics
 from stegx.video.analyze import get_video_info
 from stegx.video.capacity import get_video_capacity
@@ -918,6 +924,183 @@ def analyze_video_heuristic(
         print(
             f"\n[-] Analysis failed: "
             f"{error}"
+        )
+        
+@app.command()
+def detect(file_path: str):
+    """
+    Automatically analyze an image or video
+    for StegX payloads.
+    """
+
+    try:
+
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError
+
+        media_info = get_media_info(file_path)
+
+        print("\n--- StegX Detection Report ---\n")
+
+        print(f"File: {file_path}")
+        print(
+            f"Media Type: "
+            f"{media_info['media_type'].capitalize()}"
+        )
+        print(
+            f"Format: "
+            f"{media_info['name']}"
+        )
+
+        if not media_info["supported"]:
+            print("\n[-] Unsupported file format.")
+            return
+
+        # IMAGE DETECTION
+        if media_info["media_type"] == "image":
+
+            signature_result = run_signature_analysis(
+                file_path
+            )
+
+            heuristic_result = analyze_heuristics(
+                file_path
+            )
+
+        # VIDEO DETECTION
+        elif media_info["media_type"] == "video":
+
+            signature_result = run_video_signature_analysis(
+                file_path
+            )
+
+            heuristic_result = analyze_video_heuristics(
+                file_path
+            )
+
+        else:
+
+            print("\n[-] Unsupported media type.")
+            return
+
+        # -------------------------
+        # SIGNATURE RESULTS
+        # -------------------------
+
+        print("\n--- Signature Analysis ---\n")
+
+        if signature_result["detected"]:
+
+            print("[+] STEGX signature: DETECTED")
+
+            print(
+                f"[+] Version: "
+                f"{signature_result['version']}"
+            )
+
+            print(
+                f"[+] Encrypted: "
+                f"{signature_result['encrypted']}"
+            )
+
+            print(
+                f"[+] Original filename: "
+                f"{signature_result['filename']}"
+            )
+
+            print(
+                f"[+] Payload size: "
+                f"{format_size(signature_result['payload_size'])}"
+            )
+
+        else:
+
+            print("[-] STEGX signature: NOT DETECTED")
+
+        # -------------------------
+        # HEURISTIC RESULTS
+        # -------------------------
+
+        print("\n--- Heuristic Analysis ---\n")
+
+        if media_info["media_type"] == "video":
+
+            print(
+                f"Frames analyzed: "
+                f"{heuristic_result['frames_analyzed']}"
+            )
+
+        print(
+            f"Suspicion Score: "
+            f"{heuristic_result['suspicion_score']}/100"
+        )
+
+        print(
+            f"Verdict: "
+            f"{heuristic_result['verdict']}"
+        )
+
+        print(
+            f"Entropy: "
+            f"{heuristic_result['entropy']:.6f}"
+        )
+
+        print(
+            f"Balance difference: "
+            f"{heuristic_result['balance_difference']:.4f}%"
+        )
+
+        # -------------------------
+        # FINAL RESULT
+        # -------------------------
+
+        print("\n--- Overall Result ---\n")
+
+        if signature_result["detected"]:
+
+            print("[+] KNOWN STEGX PAYLOAD DETECTED")
+
+            print(
+                "[+] Hidden data is confirmed "
+                "by the STEGX signature."
+            )
+
+        elif heuristic_result["suspicion_score"] >= 70:
+
+            print("[!] HIGHLY SUSPICIOUS MEDIA")
+
+            print(
+                "[!] Statistical analysis indicates "
+                "possible hidden data."
+            )
+
+        elif heuristic_result["suspicion_score"] >= 40:
+
+            print("[!] POSSIBLE SUSPICIOUS MEDIA")
+
+            print(
+                "[!] Further analysis is recommended."
+            )
+
+        else:
+
+            print("[-] No known StegX payload detected.")
+
+            print(
+                "[!] Heuristic analysis alone cannot "
+                "guarantee that hidden data is absent."
+            )
+
+    except FileNotFoundError:
+
+        print(
+            f"\n[-] File not found: {file_path}"
+        )
+
+    except Exception as error:
+
+        print(
+            f"\n[-] Detection failed: {error}"
         )
 
 if __name__ == "__main__":
