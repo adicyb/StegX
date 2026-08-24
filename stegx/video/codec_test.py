@@ -3,40 +3,51 @@ import os
 import cv2
 
 
-def test_video_codec(
+def check_video_codec(
     input_path: str,
     output_path: str,
     codec_name: str,
     max_frames: int = 100,
-):
+) -> dict:
     """
-    Test whether OpenCV can read a video and write
-    frames using the specified codec.
+    Check whether OpenCV can read an input video and
+    write frames using the specified codec.
+
+    This is a utility function used by the StegX CLI.
     """
 
+    # Open the input video.
     video = cv2.VideoCapture(input_path)
 
     if not video.isOpened():
+
         raise ValueError(
             "Could not open the input video."
         )
 
+    # Read video properties.
     width = int(
-        video.get(cv2.CAP_PROP_FRAME_WIDTH)
+        video.get(
+            cv2.CAP_PROP_FRAME_WIDTH
+        )
     )
 
     height = int(
-        video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        video.get(
+            cv2.CAP_PROP_FRAME_HEIGHT
+        )
     )
 
     fps = video.get(
         cv2.CAP_PROP_FPS
     )
 
+    # Create the codec identifier.
     fourcc = cv2.VideoWriter_fourcc(
         *codec_name
     )
 
+    # Create the output video.
     writer = cv2.VideoWriter(
         output_path,
         fourcc,
@@ -55,6 +66,7 @@ def test_video_codec(
 
     frames_written = 0
 
+    # Copy frames into the output video.
     while frames_written < max_frames:
 
         success, frame = video.read()
@@ -66,9 +78,11 @@ def test_video_codec(
 
         frames_written += 1
 
+    # Release resources.
     video.release()
     writer.release()
 
+    # Verify that the output file was created.
     file_exists = os.path.exists(
         output_path
     )

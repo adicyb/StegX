@@ -19,7 +19,7 @@ from stegx.analysis.signature import (
 from stegx.analysis.heuristic import analyze_heuristics
 from stegx.video.analyze import get_video_info
 from stegx.video.capacity import get_video_capacity
-from stegx.video.codec_test import test_video_codec
+from stegx.video.codec_test import check_video_codec
 from stegx.video.integrity import compare_video_frames
 from stegx.video.embed import embed_video_payload
 from stegx.video.extract import extract_video_payload
@@ -597,7 +597,7 @@ def codec_test(
             f"samples/codec_test_{codec}.avi"
         )
 
-        result = test_video_codec(
+        result = check_video_codec(
             video_path,
             output_path,
             codec,

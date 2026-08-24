@@ -17,7 +17,7 @@ def extract_lsb_bits(image: Image.Image) -> str:
     """
 
     pixels = list(
-        image.convert("RGB").getdata()
+        image.convert("RGB").get_flattened_data()
     )
 
     bits = []
@@ -42,7 +42,7 @@ def extract_randomized_bits(
     """
 
     pixels = list(
-        image.convert("RGB").getdata()
+        image.convert("RGB").get_flattened_data()
     )
 
     # Each RGB pixel provides three available

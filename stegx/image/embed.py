@@ -144,7 +144,7 @@ def embed_payload(
 
     # Get all pixels.
     pixels = list(
-        image.getdata()
+        image.get_flattened_data()
     )
 
     # Convert pixels into a flat list:
