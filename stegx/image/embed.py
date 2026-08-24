@@ -3,6 +3,7 @@ from pathlib import Path
 from PIL import Image
 
 from stegx.core.payload import create_payload
+from stegx.core.positions import generate_positions
 
 
 SAFE_FORMATS = {
@@ -43,29 +44,34 @@ def get_safe_output_path(
         format_changed
     """
 
-    input_suffix = Path(input_path).suffix.lower()
-    output_suffix = Path(output_path).suffix.lower()
+    output_suffix = Path(
+        output_path
+    ).suffix.lower()
 
     # If output has no extension, use PNG.
     if not output_suffix:
+
         output_path = f"{output_path}.png"
         output_suffix = ".png"
 
-    # Lossy output formats are unsafe because
-    # compression can destroy embedded LSB data.
+    # Lossy formats can destroy LSB data.
     if output_suffix in LOSSY_FORMATS:
 
         output_path = str(
-            Path(output_path).with_suffix(".png")
+            Path(output_path).with_suffix(
+                ".png"
+            )
         )
 
         return output_path, True
 
-    # Unknown formats are also converted to PNG.
+    # Unknown formats are converted to PNG.
     if output_suffix not in SAFE_FORMATS:
 
         output_path = str(
-            Path(output_path).with_suffix(".png")
+            Path(output_path).with_suffix(
+                ".png"
+            )
         )
 
         return output_path, True
@@ -78,16 +84,20 @@ def embed_payload(
     payload_path: str,
     output_path: str,
     password: str | None = None,
+    position_key: str | None = None,
 ):
     """
     Embed a StegX payload inside an image using
     1-bit LSB embedding across RGB channels.
 
+    If a position key is provided, payload bits are
+    embedded at deterministic randomized positions.
+
     Unsafe output formats are automatically converted
     to PNG to preserve the embedded payload.
     """
 
-    # Determine a safe output format.
+    # Determine safe output format.
     final_output_path, format_changed = (
         get_safe_output_path(
             image_path,
@@ -95,62 +105,120 @@ def embed_payload(
         )
     )
 
-    # Load the carrier image.
-    image = Image.open(image_path).convert("RGB")
+    # Load carrier image.
+    image = Image.open(
+        image_path
+    ).convert("RGB")
 
-    # Create the structured StegX payload.
+    # Create structured StegX payload.
     payload = create_payload(
         payload_path,
         password=password,
     )
 
-    # Convert payload bytes into bits.
-    payload_bits = bytes_to_bits(payload)
+    # Convert payload into bits.
+    payload_bits = bytes_to_bits(
+        payload
+    )
 
-    required_bits = len(payload_bits)
+    required_bits = len(
+        payload_bits
+    )
 
     width, height = image.size
 
-    # RGB provides three usable channels per pixel.
-    available_bits = width * height * 3
+    # RGB provides three channels per pixel.
+    available_bits = (
+        width
+        * height
+        * 3
+    )
 
     if required_bits > available_bits:
+
         raise ValueError(
             "Payload is too large for this image. "
             f"Required: {required_bits} bits, "
             f"Available: {available_bits} bits."
         )
 
-    pixels = list(image.getdata())
+    # Get all pixels.
+    pixels = list(
+        image.getdata()
+    )
 
-    modified_pixels = []
-
-    bit_index = 0
+    # Convert pixels into a flat list:
+    #
+    # [R, G, B, R, G, B, ...]
+    channels = []
 
     for red, green, blue in pixels:
 
-        channels = [red, green, blue]
-
-        for channel_index in range(3):
-
-            if bit_index < required_bits:
-
-                bit = int(
-                    payload_bits[bit_index]
-                )
-
-                channels[channel_index] = (
-                    channels[channel_index]
-                    & 0b11111110
-                ) | bit
-
-                bit_index += 1
-
-        modified_pixels.append(
-            tuple(channels)
+        channels.extend(
+            [red, green, blue]
         )
 
-    # Create the modified image.
+    # ---------------------------------------------
+    # POSITION SELECTION
+    # ---------------------------------------------
+
+    if position_key:
+
+        positions = generate_positions(
+            total_positions=available_bits,
+            required_positions=required_bits,
+            key=position_key,
+        )
+
+        randomized = True
+
+    else:
+
+        # Default sequential embedding.
+        positions = list(
+            range(required_bits)
+        )
+
+        randomized = False
+
+    # ---------------------------------------------
+    # EMBED PAYLOAD BITS
+    # ---------------------------------------------
+
+    for bit_index, position in enumerate(
+        positions
+    ):
+
+        bit = int(
+            payload_bits[bit_index]
+        )
+
+        channels[position] = (
+            channels[position]
+            & 0b11111110
+        ) | bit
+
+    # ---------------------------------------------
+    # REBUILD PIXELS
+    # ---------------------------------------------
+
+    modified_pixels = []
+
+    for index in range(
+        0,
+        len(channels),
+        3,
+    ):
+
+        modified_pixels.append(
+            (
+                channels[index],
+                channels[index + 1],
+                channels[index + 2],
+            )
+        )
+
+    # Create modified image.
     stego_image = Image.new(
         "RGB",
         image.size,
@@ -160,7 +228,7 @@ def embed_payload(
         modified_pixels
     )
 
-    # Save using the safe format.
+    # Save output.
     stego_image.save(
         final_output_path
     )
@@ -176,5 +244,6 @@ def embed_payload(
             password is not None
             and password != ""
         ),
+        "randomized_positions": randomized,
         "format_changed": format_changed,
     }

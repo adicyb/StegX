@@ -140,6 +140,15 @@ def hide_image(
         "-p",
         help="Password used to encrypt the hidden payload.",
     ),
+    position_key: str = typer.Option(
+        None,
+        "--position-key",
+        "-k",
+        help=(
+            "Key used to generate randomized embedding "
+            "positions."
+        ),
+    ),
 ):
     """Hide a file inside an image using LSB steganography."""
 
@@ -150,6 +159,7 @@ def hide_image(
             payload_path,
             output_path,
             password=password,
+            position_key=position_key,
         )
 
         print("\n[+] Payload embedded successfully!")
@@ -159,7 +169,15 @@ def hide_image(
             f"{result['encrypted']}"
         )
 
-        print(f"[+] Payload bits: {result['payload_bits']:,}")
+        print(
+            f"[+] Randomized positions: "
+            f"{result['randomized_positions']}"
+        )
+
+        print(
+            f"[+] Payload bits: "
+            f"{result['payload_bits']:,}"
+        )
 
         print(
             f"[+] Carrier capacity: "
@@ -171,7 +189,10 @@ def hide_image(
             f"{result['pixels_modified']:,}"
         )
 
-        print(f"[+] Output: {result['output_path']}")
+        print(
+            f"[+] Output: "
+            f"{result['output_path']}"
+        )
 
         if result["format_changed"]:
 
@@ -185,16 +206,24 @@ def hide_image(
                 "to PNG."
             )
 
-
-
     except FileNotFoundError as error:
-        print(f"\n[-] File not found: {error}")
+
+        print(
+            f"\n[-] File not found: {error}"
+        )
 
     except ValueError as error:
-        print(f"\n[-] {error}")
+
+        print(
+            f"\n[-] {error}"
+        )
 
     except Exception as error:
-        print(f"\n[-] Embedding failed: {error}")
+
+        print(
+            f"\n[-] Embedding failed: {error}"
+        )
+        
 @app.command()
 def extract_image(
     image_path: str,
@@ -205,6 +234,12 @@ def extract_image(
         "-p",
         help="Password required for encrypted payloads.",
     ),
+    position_key: str = typer.Option(
+        None,
+        "--position-key",
+        "-k",
+        help="Key used to reproduce randomized embedding positions.",
+    ),
 ):
     """Extract a hidden StegX payload from an image."""
 
@@ -214,6 +249,7 @@ def extract_image(
             image_path,
             output_directory,
             password=password,
+            position_key=position_key,
         )
 
         print("\n[+] Payload extracted successfully!")
@@ -231,6 +267,11 @@ def extract_image(
         print(
             f"[+] Encrypted: "
             f"{result['encrypted']}"
+        )
+
+        print(
+            f"[+] Randomized positions: "
+            f"{result['randomized_positions']}"
         )
 
         print(
@@ -267,6 +308,7 @@ def extract_image(
 
     except Exception as error:
         print(f"\n[-] Unexpected error: {error}")
+
 @app.command()
 def analyze_signature(image_path: str):
     """Check whether an image contains a StegX payload."""
