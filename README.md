@@ -532,15 +532,15 @@ Current test suite: **22 tests passing**.
 ---
 
 <div align="center">
-<sub>
 
-Built for cybersecurity education, digital forensics research, and steganography experimentation.
-**Not to be used for concealing malicious content or evading legitimate security controls.**
+<sub>Built for cybersecurity education, digital forensics research, and steganography experimentation.</sub>
+<br/>
+<sub><strong>Not to be used for concealing malicious content or evading legitimate security controls.</strong></sub>
 
 <br/><br/>
 
-**Aditya Khandelwal** — Cybersecurity · Digital Forensics · Security Research
-Educational / research use · ⭐ star the repo if StegX was useful to you
+<sub><strong>Aditya Khandelwal</strong> — Cybersecurity · Digital Forensics · Security Research</sub>
+<br/>
+<sub>Educational / research use · ⭐ star the repo if StegX was useful to you</sub>
 
-</sub>
 </div>
