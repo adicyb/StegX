@@ -37,7 +37,7 @@ Every pixel has a channel it doesn't need. StegX writes payloads into that spare
 <tr valign="top">
 <td>
 
-LSB embedding into PNG, BMP, TIFF/TIF carriers. JPEG/WebP inputs are detected and redirected to a safe lossless output. Capacity calculation, extraction, and automatic preview of recovered text files.
+LSB embedding into PNG, BMP, TIFF/TIF carriers. JPEG/WebP inputs are detected and redirected to a safe lossless output. Capacity calculation, extraction, and automatic preview of recovered text files. Optional key-based randomized pixel selection in place of sequential embedding.
 
 </td>
 <td>
@@ -86,6 +86,12 @@ Two engines, one command. `detect` figures out whether your file is an image or 
 
 ```bash
 python3 -m stegx.cli detect samples/test_stego.png
+```
+
+If the payload was embedded with `--position-key`, pass the same key to `detect` so the signature scan can locate the header at its randomized offsets:
+
+```bash
+python3 -m stegx.cli detect samples/random_stego.png --position-key mysecretkey
 ```
 
 <details>
@@ -220,6 +226,26 @@ python3 -m stegx.cli hide-image \
   --password mypassword
 ```
 
+**Randomized pixel selection.** By default, StegX embeds sequentially, starting from the first pixel. Passing `--position-key` instead derives a pixel-visitation order from the key and scatters the payload across that pseudorandom path, rather than writing to a contiguous run of pixels. This makes the payload's location dependent on the key rather than a fixed, predictable start point, which is useful for classroom exercises on the limitations of naive sequential LSB steganalysis.
+
+```bash
+python3 -m stegx.cli hide-image \
+  samples/test.png \
+  samples/secret.txt \
+  --output-path samples/random_stego.png \
+  --position-key mysecretkey
+
+# randomized placement + encryption can be combined
+python3 -m stegx.cli hide-image \
+  samples/test.png \
+  samples/secret.txt \
+  --output-path samples/random_encrypted_stego.png \
+  --position-key mysecretkey \
+  --password mypassword
+```
+
+> The position key only determines *where* bits are written — it is not a substitute for `--password` encryption of the payload contents. Use both together for randomized placement of encrypted data.
+
 </details>
 
 <details open>
@@ -231,6 +257,20 @@ python3 -m stegx.cli extract-image samples/stego.png
 # encrypted payloads
 python3 -m stegx.cli extract-image \
   samples/encrypted_stego.png \
+  --password mypassword
+```
+
+If the payload was hidden with `--position-key`, the same key must be supplied on extraction to reconstruct the pixel-visitation order:
+
+```bash
+python3 -m stegx.cli extract-image \
+  samples/random_stego.png \
+  --position-key mysecretkey
+
+# randomized placement + encryption
+python3 -m stegx.cli extract-image \
+  samples/random_encrypted_stego.png \
+  --position-key mysecretkey \
   --password mypassword
 ```
 
@@ -283,6 +323,8 @@ python3 -m stegx.cli extract-video \
   --password mypassword    # if encrypted
 ```
 
+> `--position-key` randomized pixel selection is currently image-only; video embedding remains sequential. See [Roadmap](#-roadmap).
+
 </details>
 
 <br/>
@@ -309,7 +351,7 @@ python3 -m stegx.cli extract-video \
 └───────────────┘
 ```
 
-This header makes signature detection and structured extraction possible. It identifies the payload format, encryption state, original filename, and encrypted payload size so StegX knows exactly how much data to recover.
+This header makes signature detection and structured extraction possible. It identifies the payload format, encryption state, original filename, and encrypted payload size so StegX knows exactly how much data to recover. When `--position-key` is used, the header and payload bits are written across a key-derived pseudorandom pixel order instead of sequential pixels; the same key is required to walk that order again during detection and extraction.
 
 <details>
 <summary><b>detection flow</b></summary>
@@ -344,10 +386,11 @@ This header makes signature detection and structured extraction possible. It ide
 
 ## `$ limitations`
 
-- Image embedding is sequential 1-bit LSB — no randomized pixel selection yet
+- Image embedding defaults to sequential 1-bit LSB; `--position-key` enables key-derived randomized pixel selection as an alternative, but the order is still a single deterministic path per key, not a cryptographically secure PRP
+- Randomized pixel selection (`--position-key`) is image-only; video embedding is still sequential
 - Video embedding requires a lossless codec (FFV1) — any recompression or transcode (e.g. to MP4/H.264) can destroy the payload
 - Heuristic detection is statistical, never conclusive
-- Signature detection only recognizes StegX's own payload format
+- Signature detection only recognizes StegX's own payload format, and requires the correct `--position-key` to locate a randomized payload
 - Video capacity figures are theoretical and codec-dependent
 - Built for local experimentation and education, not production use
 
@@ -355,7 +398,8 @@ This header makes signature detection and structured extraction possible. It ide
 
 ## `$ roadmap`
 
-- [ ] Key-based randomized pixel selection
+- [x] Key-based randomized pixel selection *(images)*
+- [ ] Key-based randomized pixel selection *(video)*
 - [ ] Multi-bit embedding options
 - [ ] Additional image formats
 - [ ] Audio steganography

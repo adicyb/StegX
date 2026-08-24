@@ -310,37 +310,89 @@ def extract_image(
         print(f"\n[-] Unexpected error: {error}")
 
 @app.command()
-def analyze_signature(image_path: str):
+def analyze_signature(
+    image_path: str,
+    position_key: str = typer.Option(
+        None,
+        "--position-key",
+        "-k",
+        help=(
+            "Key used to reproduce randomized embedding "
+            "positions for signature analysis."
+        ),
+    ),
+):
     """Check whether an image contains a StegX payload."""
 
     try:
-        result = run_signature_analysis(image_path)
+
+        result = run_signature_analysis(
+            image_path,
+            position_key=position_key,
+        )
 
         print("\n--- StegX Signature Analysis ---")
 
         if not result["detected"]:
-            print("\n[-] No valid STEGX signature detected.")
+
+            print(
+                "\n[-] No valid STEGX signature detected."
+            )
+
+            if position_key:
+
+                print(
+                    "[!] The position key may be incorrect."
+                )
+
             return
 
         print("\n[+] STEGX signature detected!")
-        print(f"[+] Version: {result['version']}")
+
+        print(
+            f"[+] Version: "
+            f"{result['version']}"
+        )
+
         print("[+] Payload present: Yes")
-        print(f"[+] Encrypted: {result['encrypted']}")
+
+        print(
+            f"[+] Encrypted: "
+            f"{result['encrypted']}"
+        )
+
         print(
             f"[+] Original filename: "
             f"{result['filename']}"
         )
+
         print(
             f"[+] Payload size: "
             f"{format_size(result['payload_size'])}"
         )
 
+        print(
+            f"[+] Randomized positions: "
+            f"{position_key is not None and position_key != ''}"
+        )
+
     except FileNotFoundError:
-        print(f"\n[-] File not found: {image_path}")
+
+        print(
+            f"\n[-] File not found: {image_path}"
+        )
+
+    except ValueError as error:
+
+        print(
+            f"\n[-] Analysis failed: {error}"
+        )
 
     except Exception as error:
-        print(f"\n[-] Analysis failed: {error}")
 
+        print(
+            f"\n[-] Analysis failed: {error}"
+        )
 @app.command()
 def analyze_heuristic(image_path: str):
     """Analyze an image for possible LSB steganography."""
@@ -969,7 +1021,18 @@ def analyze_video_heuristic(
         )
         
 @app.command()
-def detect(file_path: str):
+def detect(
+    file_path: str,
+    position_key: str = typer.Option(
+        None,
+        "--position-key",
+        "-k",
+        help=(
+            "Key used to reproduce randomized embedding "
+            "positions for signature detection."
+        ),
+    ),
+):
     """
     Automatically analyze an image or video
     for StegX payloads.
@@ -985,31 +1048,41 @@ def detect(file_path: str):
         print("\n--- StegX Detection Report ---\n")
 
         print(f"File: {file_path}")
+
         print(
             f"Media Type: "
             f"{media_info['media_type'].capitalize()}"
         )
+
         print(
             f"Format: "
             f"{media_info['name']}"
         )
 
         if not media_info["supported"]:
+
             print("\n[-] Unsupported file format.")
             return
 
+        # -------------------------
         # IMAGE DETECTION
+        # -------------------------
+
         if media_info["media_type"] == "image":
 
             signature_result = run_signature_analysis(
-                file_path
+                file_path,
+                position_key=position_key,
             )
 
             heuristic_result = analyze_heuristics(
                 file_path
             )
 
+        # -------------------------
         # VIDEO DETECTION
+        # -------------------------
+
         elif media_info["media_type"] == "video":
 
             signature_result = run_video_signature_analysis(
@@ -1055,9 +1128,26 @@ def detect(file_path: str):
                 f"{format_size(signature_result['payload_size'])}"
             )
 
+            if media_info["media_type"] == "image":
+
+                print(
+                    f"[+] Randomized positions: "
+                    f"{position_key is not None}"
+                )
+
         else:
 
             print("[-] STEGX signature: NOT DETECTED")
+
+            if (
+                media_info["media_type"] == "image"
+                and position_key
+            ):
+
+                print(
+                    "[!] No valid STEGX signature was found "
+                    "using the supplied position key."
+                )
 
         # -------------------------
         # HEURISTIC RESULTS
@@ -1144,6 +1234,5 @@ def detect(file_path: str):
         print(
             f"\n[-] Detection failed: {error}"
         )
-
 if __name__ == "__main__":
     app()
