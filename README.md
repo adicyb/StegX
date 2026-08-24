@@ -16,7 +16,7 @@
 <a href="#-limitations"><img src="https://img.shields.io/badge/Status-Prototype-FF3B5C?style=flat-square&labelColor=0B0E14" /></a>
 <a href="#-usage"><img src="https://img.shields.io/badge/Interface-CLI-ECEFF4?style=flat-square&labelColor=0B0E14" /></a>
 
-**[Features](#-features) · [Install](#-install) · [Usage](#-usage) · [Detection](#-detection) · [Architecture](#-architecture) · [Roadmap](#-roadmap)**
+**[Features](#-features) · [Install](#-install) · [Quick Start](#-quick-start) · [Commands](#-commands) · [Usage](#-usage) · [Detection](#-detection) · [Testing](#-testing) · [Architecture](#-architecture) · [Roadmap](#-roadmap)**
 
 </div>
 
@@ -162,6 +162,7 @@ StegX
 │
 ├── samples/
 ├── requirements.txt
+├── pyproject.toml
 └── README.md
 ```
 
@@ -178,15 +179,108 @@ StegX
 
 ## `$ install`
 
+Clone the repository:
+
 ```bash
 git clone https://github.com/adicyb/StegX.git
 cd StegX
-
-python3 -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
 ```
+
+Create and activate a virtual environment:
+
+**Linux/macOS**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+**Windows**
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Then install StegX itself (this uses `pyproject.toml` and registers the `stegx` command on your `PATH`):
+
+```bash
+pip install -e .
+```
+
+> Installing only `requirements.txt` sets up the dependencies but does **not** install the `stegx` command. Use `pip install -e .` to get the CLI entry point.
+
+Once installed, verify it worked:
+
+```bash
+stegx
+```
+
+<br/>
+
+## `$ quick start`
+
+After installation, launch StegX by running:
+
+```bash
+stegx
+```
+
+This displays the StegX banner and the available commands, grouped into Image, Video, and Detection categories.
+
+For help with a specific command:
+
+```bash
+stegx COMMAND --help
+```
+
+For example:
+
+```bash
+stegx hide-image --help
+stegx extract-image --help
+stegx hide-video --help
+stegx extract-video --help
+```
+
+<br/>
+
+## `$ commands`
+
+Running `stegx` with no arguments displays the available commands grouped by category.
+
+### Image Commands
+
+| Command | Description |
+|---|---|
+| `info` | Display information about StegX |
+| `formats` | Display supported media formats |
+| `check FILE` | Check whether a media file is supported |
+| `capacity IMAGE` | Calculate image payload capacity |
+| `payload-info FILE` | Inspect a StegX payload |
+| `hide-image` | Hide a file inside an image |
+| `extract-image` | Extract hidden data from an image |
+| `analyze-signature` | Analyze an image for a StegX signature |
+| `analyze-heuristic` | Analyze an image for possible LSB steganography |
+
+### Video Commands
+
+| Command | Description |
+|---|---|
+| `video-info VIDEO` | Display video information |
+| `video-capacity VIDEO` | Calculate video payload capacity |
+| `codec-test VIDEO` | Test video codec compatibility |
+| `video-integrity ORIGINAL MODIFIED` | Compare original and modified video frames |
+| `hide-video` | Hide a file inside a video |
+| `extract-video` | Extract hidden data from a video |
+| `analyze-video-signature` | Analyze a video for a StegX signature |
+| `analyze-video-heuristic` | Analyze a video for possible steganographic artifacts |
+
+### Detection
+
+| Command | Description |
+|---|---|
+| `detect FILE` | Detect possible StegX payloads using signature and heuristic analysis |
 
 <br/>
 
@@ -196,6 +290,8 @@ pip install -r requirements.txt
 python3 -m stegx.cli info                    # project info
 python3 -m stegx.cli check samples/image.png # identify media format
 ```
+
+> After installing with `pip install -e .`, you can drop the `python3 -m stegx.cli` prefix and just use `stegx` (e.g. `stegx info`, `stegx check samples/image.png`).
 
 #### image
 
@@ -381,6 +477,28 @@ This header makes signature detection and structured extraction possible. It ide
 ```
 
 </details>
+
+<br/>
+
+## `$ testing`
+
+Run the complete test suite using:
+
+```bash
+pytest -v
+```
+
+The project currently includes tests for:
+
+- Payload creation and validation
+- Encryption and decryption
+- Incorrect password handling
+- Randomized embedding positions
+- Image embedding and extraction
+- Video embedding and extraction
+- Encrypted and randomized workflows
+
+Current test suite: **22 tests passing**.
 
 <br/>
 

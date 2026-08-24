@@ -34,16 +34,64 @@ app = typer.Typer(
     name="stegx",
     help="A CLI-based secure media steganography toolkit.",
     add_completion=False,
+    invoke_without_command=True,
 )
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
+def show_main_menu(ctx: typer.Context):
+    """
+    Display the StegX main menu when no command is provided.
+    """
+
+    if ctx.invoked_subcommand is not None:
+        return
+
+    show_banner()
+
+    typer.echo("Available commands:\n")
+
+    typer.echo("Image commands:\n")
+
+    typer.echo("  info                     Display information about StegX")
+    typer.echo("  formats                  Display supported media formats")
+    typer.echo("  check FILE               Check whether a media file is supported")
+    typer.echo("  capacity IMAGE           Calculate image payload capacity")
+    typer.echo("  payload-info FILE        Inspect a StegX payload")
+    typer.echo("  hide-image               Hide a file inside an image")
+    typer.echo("  extract-image            Extract hidden data from an image")
+    typer.echo("  analyze-signature        Analyze an image for a StegX signature")
+    typer.echo("  analyze-heuristic        Analyze an image for possible LSB steganography")
+
+    typer.echo("\nVideo commands:\n")
+
+    typer.echo("  video-info VIDEO")
+    typer.echo("  video-capacity VIDEO")
+    typer.echo("  codec-test VIDEO")
+    typer.echo("  video-integrity ORIGINAL MODIFIED")
+    typer.echo("  hide-video")
+    typer.echo("  extract-video")
+    typer.echo("  analyze-video-signature")
+    typer.echo("  analyze-video-heuristic")
+
+    typer.echo("\nDetection:\n")
+
+    typer.echo("  detect FILE")
+
+    typer.echo("\nFor detailed command help, use:")
+    typer.echo("  stegx COMMAND --help")
+
+
 def main():
     """
-    StegX - Secure Media Steganography Toolkit
+    Launch the StegX command-line application.
     """
-    pass
 
+    app()
+
+
+if __name__ == "__main__":
+    main()
 
 @app.command()
 def info():
